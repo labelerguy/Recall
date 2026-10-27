@@ -84,8 +84,10 @@ function parts(text) {
 function judgeHTML(answer) {
   const p = parts(answer);
   if (!p) return { html: `<div class="back">${esc(answer)}</div>`, multi: false };
+  const extra = String(answer).split('\n').filter(l => !/^([A-Za-z][A-Za-z /]{1,24}):\s*(.+)$/.test(l) && l.trim());
   return { multi: true, html: `<div class="back"><p class="small muted">Check off only the parts you actually had. It counts as right only if you had every part.</p>` +
-    p.map((x, k) => `<label class="part"><input type="checkbox" data-part="${k}"> <b>${esc(x.label)}:</b> ${esc(x.value)}</label>`).join('') + '</div>' };
+    p.map((x, k) => `<label class="part"><input type="checkbox" data-part="${k}"> <span><b>${esc(x.label)}:</b> ${esc(x.value)}</span></label>`).join('') +
+    extra.map(l => `<p class="small muted" style="margin-top:10px">${esc(l)}</p>`).join('') + '</div>' };
 }
 function crumb(t) { $('#crumb').textContent = t || ''; }
 function sides(deck, i, flip) {
