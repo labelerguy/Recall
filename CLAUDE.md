@@ -18,4 +18,4 @@ Recall is Sir's learning headquarters: a static site on GitHub Pages (labelerguy
 Any new study rule needs a peer-reviewed primary study with a comparison group, read in full text or official abstract. Add it to `RESEARCH.md` with citation, design, result, and verification status before shipping it. No blogs, Wikipedia, or social media as sources.
 
 ## Design
-Relay design system: zinc neutrals (#09090B base), one gold (#D4AF37) element per screen, Archivo 800 display, Manrope body, Geist Mono for numbers. Weights 400-600, no all-caps, no gradients or glows, motion under 300ms, no text under 14px.
+Neumorphic (soft UI), per Sir's reference: one light gray surface (#E6E8EC); every element is extruded from it with paired shadows (white top-left, #BEC3CC bottom-right). Raised = cards, rows, buttons. Inset = fields, progress tracks, checked boxes, pressed states. Large radii (20-28px), pill buttons, chevrons on list rows. Monochrome, no accent color; red/green only for Missed/Got it text. Manrope everywhere, Geist Mono for numbers. Wordmark: "RE" outlined + "CALL" solid. Keep text at 14px or larger and contrast at 4.5:1 or better.
