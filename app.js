@@ -140,8 +140,8 @@ async function mediaList(c) {
 async function hydrate(fig) {
   const deck = decks.find(d => d.id === fig.dataset.deck); if (!deck) return;
   const i = +fig.dataset.i, c = deck.cards[i], img = fig.querySelector('img');
-  if (c.image) { img.src = c.image; return; }
-  const list = await mediaList(c);
+  if (c.image && !(c.wiki || c.commons)) { img.src = c.image; return; }
+  const list = c.image ? [c.image, ...(await mediaList(c)).filter(u => u !== c.image)] : await mediaList(c);
   if (!list.length) { img.remove(); fig.querySelector('[data-next]')?.remove(); fig.insertAdjacentHTML('afterbegin', '<p class="small muted">No picture found. Use Search images.</p>'); return; }
   const pick = store.get('pick:' + deck.id + ':' + i, 0) % list.length;
   img.src = list[pick];
