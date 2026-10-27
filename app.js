@@ -12,20 +12,31 @@ const store = {
   set(k, v) { try { localStorage.setItem('recall:' + k, JSON.stringify(v)); } catch {} },
 };
 
-let decks = []; // {id, title, cards:[{front,back,image}], source:'repo'|'local'}
+let decks = [];  // every deck: {id, title, cards, source, topic}
+let topics = []; // {id, title, kind, exam, decks:[deck]}
 
 async function loadDecks() {
-  decks = [];
-  try {
-    const idx = await (await fetch('decks/index.json', { cache: 'no-store' })).json();
-    for (const file of idx) {
+  decks = []; topics = [];
+  let list = [];
+  try { list = await (await fetch('topics.json', { cache: 'no-store' })).json(); } catch {}
+  for (const t of list) {
+    const topic = { id: t.id, title: t.title, kind: t.kind || 'Personal', exam: t.exam || null, decks: [] };
+    for (const file of t.decks || []) {
       try {
         const d = await (await fetch('decks/' + file, { cache: 'no-store' })).json();
-        decks.push({ id: file.replace(/\.json$/, ''), title: d.title, cards: d.cards, source: 'repo' });
+        const deck = { id: file.replace(/\.json$/, ''), title: d.title, cards: d.cards, source: 'repo', topic };
+        topic.decks.push(deck); decks.push(deck);
       } catch {}
     }
-  } catch {}
-  for (const d of store.get('localDecks', [])) decks.push({ ...d, source: 'local' });
+    topics.push(topic);
+  }
+  const byName = {};
+  for (const d of store.get('localDecks', [])) {
+    const name = d.topic || 'Imported';
+    let topic = topics.find(t => t.title === name) || byName[name];
+    if (!topic) { topic = byName[name] = { id: 'local-' + name.toLowerCase().replace(/\W+/g, '-'), title: name, kind: 'Personal', exam: null, decks: [] }; topics.push(topic); }
+    const deck = { ...d, source: 'local', topic }; topic.decks.push(deck); decks.push(deck);
+  }
 }
 
 // ---------- scheduling (see RESEARCH.md) ----------
@@ -35,7 +46,9 @@ async function loadDecks() {
 // at a 1-week horizon, falling to about 7.5% at a 1-year horizon (midpoints of the reported 20-40% and 5-10%).
 function srs(deck) { return store.get('srs:' + deck.id, {}); }
 function saveSrs(deck, s) { store.set('srs:' + deck.id, s); }
-function examDate(deck) { const v = store.get('exam:' + deck.id, null); return v ? new Date(v + 'T09:00:00').getTime() : null; }
+function examStr(topic) { const v = store.get('exam:' + topic.id, undefined); return v === undefined ? topic.exam : v; }
+function examDate(deck) { const v = deck.topic ? examStr(deck.topic) : null; return v ? new Date(v + 'T09:00:00').getTime() : null; }
+function learnedCount(deck) { const s = srs(deck); return deck.cards.filter((_, i) => s[i] && s[i].sessions > 0).length; }
 function dueCount(deck) {
   const s = srs(deck), now = Date.now();
   return deck.cards.filter((_, i) => { const c = s[i]; return !c || !c.due || c.due <= now; }).length;
@@ -129,28 +142,81 @@ new MutationObserver(() => {
   document.querySelectorAll('figure.art:not([data-done])').forEach(f => { f.dataset.done = '1'; hydrate(f); });
 }).observe(document.getElementById('app'), { childList: true, subtree: true });
 
-// ---------- home ----------
+// ---------- dashboard ----------
+const daysTo = ms => Math.ceil((ms - Date.now()) / DAY);
+function topicStats(t) {
+  const total = t.decks.reduce((n, d) => n + d.cards.length, 0);
+  const learned = t.decks.reduce((n, d) => n + learnedCount(d), 0);
+  const due = t.decks.reduce((n, d) => n + dueCount(d), 0);
+  const ex = examStr(t); const exMs = ex ? new Date(ex + 'T09:00:00').getTime() : null;
+  return { total, learned, due, exMs };
+}
 function home() {
   crumb('');
-  const rows = decks.map((d, n) => `
-    <div class="deck" data-n="${n}" tabindex="0" role="button">
-      <div><b>${esc(d.title)}</b><span class="meta">${d.cards.length} cards · ${d.source === 'repo' ? 'repo' : 'imported here'}</span></div>
-      <span class="due">${dueCount(d)} due</span>
-    </div>`).join('');
+  const stats = topics.map(t => ({ t, ...topicStats(t) }));
+  const upcoming = stats.filter(x => x.exMs && x.exMs > Date.now()).sort((a, b) => a.exMs - b.exMs);
+  const rows = stats.slice().sort((a, b) => (a.exMs && a.exMs > Date.now() ? a.exMs : 9e15) - (b.exMs && b.exMs > Date.now() ? b.exMs : 9e15));
+  const dueAll = stats.reduce((n, x) => n + x.due, 0);
+  const learnedAll = stats.reduce((n, x) => n + x.learned, 0), totalAll = stats.reduce((n, x) => n + x.total, 0);
+  let last = null;
+  for (const d of decks) for (const r of store.get('tests:' + d.id, [])) if (!last || r.at > last.at) last = { ...r, deck: d };
+  const nx = upcoming[0];
   app.innerHTML = `
-    <h1>Your decks</h1>
-    <p class="muted small">Recall beats rereading. Every mode here makes you produce the answer before you see it.</p>
-    ${rows || '<p class="muted">No decks yet. Import one below.</p>'}
-    <div class="row">
-      <button class="btn" id="imp">Import from Quizlet</button>
-      <button class="btn" id="exp">Export progress</button>
+    <section class="hero"><p class="eyebrow">Learning headquarters</p><h1>What you're learning</h1></section>
+    <div class="dash">
+      <div class="col">
+        ${rows.map((x, n) => `
+          <div class="topic" data-n="${topics.indexOf(x.t)}" tabindex="0" role="button">
+            <div class="topic-top"><span class="pill">${esc(x.t.kind)}</span>${x.exMs && x.exMs > Date.now() ? `<span class="mono muted">${daysTo(x.exMs)} days to exam</span>` : ''}</div>
+            <h2>${esc(x.t.title)}</h2>
+            <div class="bar" aria-label="${x.learned} of ${x.total} learned"><i style="width:${x.total ? (x.learned / x.total) * 100 : 0}%"></i></div>
+            <div class="topic-foot mono"><span>${x.learned}/${x.total} learned</span><span>${x.due} due today</span></div>
+          </div>`).join('') || '<div class="empty"><h2>Nothing here yet</h2><p class="muted">Tell Claude "I want to learn ___" and it builds the topic, or import a Quizlet set.</p></div>'}
+        <div class="row"><button class="btn" id="imp">Import a set</button><button class="btn ghost" id="exp">Back up progress</button></div>
+      </div>
+      <aside class="glance">
+        <p class="eyebrow">At a glance</p>
+        <div class="stat-row"><span>Due today</span><b class="mono ${dueAll ? 'gold' : ''}">${dueAll}</b></div>
+        <div class="stat-row"><span>Next exam</span><b class="mono">${nx ? `${daysTo(nx.exMs)}d` : '—'}</b></div>
+        ${nx ? `<p class="small muted">${esc(nx.t.title)}</p>` : ''}
+        <div class="stat-row"><span>Cards learned</span><b class="mono">${learnedAll}/${totalAll}</b></div>
+        <div class="stat-row"><span>Last test</span><b class="mono">${last ? `${last.actual}%` : '—'}</b></div>
+        ${last ? `<p class="small muted">You predicted ${last.predicted}%. Gap ${last.actual - last.predicted > 0 ? '+' : ''}${last.actual - last.predicted}.</p>` : '<p class="small muted">Run a blank-page test to see how your guess compares to your score.</p>'}
+        <a class="small muted" href="RESEARCH.md" target="_blank" rel="noopener">Why Recall works this way</a>
+      </aside>
     </div>`;
-  app.querySelectorAll('.deck').forEach(el => {
-    const go = () => deckView(decks[+el.dataset.n]);
+  app.querySelectorAll('.topic').forEach(el => {
+    const go = () => topicView(topics[+el.dataset.n]);
     el.onclick = go; el.onkeydown = e => { if (e.key === 'Enter') go(); };
   });
   $('#imp').onclick = importView;
   $('#exp').onclick = exportProgress;
+}
+
+function topicView(t) {
+  crumb(t.title);
+  const st = topicStats(t);
+  app.innerHTML = `
+    <p class="eyebrow"><button class="link" id="up">All topics</button> / ${esc(t.kind)}</p>
+    <h1>${esc(t.title)}</h1>
+    <p class="mono muted">${st.learned}/${st.total} learned · ${st.due} due today${st.exMs && st.exMs > Date.now() ? ` · exam in ${daysTo(st.exMs)} days` : ''}</p>
+    <label class="opt">Exam or goal date <input type="date" id="exam" value="${examStr(t) || ''}"></label>
+    <p class="small muted">${examStr(t) ? 'Every deck here is spaced to this date.' : 'No date: Recall spaces for retention a month out.'}</p>
+    <div class="row"><button class="btn primary" id="all" ${st.due ? '' : 'disabled'}>Study everything due (${st.due})</button></div>
+    <p class="small muted">Mixes cards from every deck in this topic. Mixed practice beat grouped practice for telling artists apart (Kornell & Bjork 2008).</p>
+    <h2 class="section">Decks</h2>
+    ${t.decks.map((d, n) => `
+      <div class="deck" data-n="${n}" tabindex="0" role="button">
+        <div><b>${esc(d.title)}</b><span class="meta mono">${d.cards.length} cards · ${learnedCount(d)} learned</span></div>
+        <span class="due mono">${dueCount(d)} due</span>
+      </div>`).join('')}`;
+  $('#up').onclick = home;
+  $('#exam').onchange = e => { store.set('exam:' + t.id, e.target.value || null); topicView(t); };
+  $('#all').onclick = () => learn(t.decks.flatMap(d => d.cards.map((_, i) => ({ deck: d, i }))), false, false, t.title, () => topicView(t));
+  app.querySelectorAll('.deck').forEach(el => {
+    const go = () => deckView(t.decks[+el.dataset.n]);
+    el.onclick = go; el.onkeydown = e => { if (e.key === 'Enter') go(); };
+  });
 }
 
 // ---------- deck page ----------
@@ -160,10 +226,9 @@ function deckView(deck) {
   const hist = tests.slice(-8).reverse().map(t =>
     `<tr><td>${new Date(t.at).toLocaleDateString()}</td><td>${t.predicted}%</td><td>${t.actual}%</td><td>${t.actual - t.predicted > 0 ? '+' : ''}${t.actual - t.predicted}</td></tr>`).join('');
   app.innerHTML = `
+    <p class="eyebrow"><button class="link" id="up">${esc(deck.topic.title)}</button></p>
     <h1>${esc(deck.title)}</h1>
     <p class="muted stat">${deck.cards.length} cards · ${dueCount(deck)} due today</p>
-    <label class="opt">Exam date <input type="date" id="exam" value="${store.get('exam:' + deck.id, '') || ''}" style="width:auto"></label>
-    <p class="small muted">${examDate(deck) ? 'Sessions are spaced to your exam date.' : 'Set your exam date so sessions are spaced to it.'}</p>
     <label class="opt"><input type="checkbox" id="flip"> Answer with the term (show definition first)</label>
     <div class="row">
       <button class="btn primary" id="learn">Learn (due cards)</button>
@@ -175,9 +240,9 @@ function deckView(deck) {
     ${hist ? `<h2>Test history</h2><table><tr><th>Date</th><th>Predicted</th><th>Actual</th><th>Gap</th></tr>${hist}</table>` : ''}
     ${deck.source === 'local' ? '<div class="row"><button class="btn" id="dl">Copy deck file (to add to the repo)</button><button class="btn" id="del">Delete deck</button></div>' : ''}`;
   const flip = () => $('#flip').checked;
-  $('#exam').onchange = e => { store.set('exam:' + deck.id, e.target.value || null); deckView(deck); };
-  $('#learn').onclick = () => learn(deck, flip(), false);
-  $('#cram').onclick = () => learn(deck, flip(), true);
+  $('#up').onclick = () => topicView(deck.topic);
+  $('#learn').onclick = () => learn(refsOf(deck), flip(), false, deck.title, () => deckView(deck));
+  $('#cram').onclick = () => learn(refsOf(deck), flip(), true, deck.title, () => deckView(deck));
   $('#test').onclick = () => testView(deck, flip());
   $('#cards').onclick = () => flipCards(deck, flip());
   if (deck.source === 'local') {
@@ -186,7 +251,6 @@ function deckView(deck) {
       try { await navigator.clipboard.writeText(txt); $('#dl').textContent = 'Copied'; } catch { prompt('Copy this', txt); }
     };
     $('#del').onclick = () => {
-      if (!confirm('Delete this deck from this browser?')) return;
       store.set('localDecks', store.get('localDecks', []).filter(d => d.id !== deck.id));
       boot();
     };
@@ -197,24 +261,25 @@ function deckView(deck) {
 // Learn: due cards, each must reach its recall criterion (3 correct the first time, 1 after). Correct-but-not-done
 // and missed cards come back later in the same session, after other cards (spaced, interleaved).
 // Cram: every card once to criterion 1, schedule untouched. Use it only in the last day or two.
-function learn(deck, flip, cram) {
-  const s = srs(deck), now = Date.now();
-  let ids = deck.cards.map((_, i) => i).filter(i => cram || !s[i] || !s[i].due || s[i].due <= now);
-  if (!ids.length) { app.innerHTML = `<h1>Nothing due</h1><p class="muted">Every card is scheduled for later. Recall it then, not now: the gap is what makes it stick.</p><button class="btn" id="back">Back</button>`; $('#back').onclick = () => deckView(deck); return; }
-  const need = {}, got = {};
-  ids.forEach(i => { need[i] = cram ? 1 : criterion(deck, i); got[i] = 0; });
-  let queue = shuffle(ids);
-  const totalNeed = ids.reduce((t, i) => t + need[i], 0); let progress = 0, misses = 0;
-  const later = (i, gap) => queue.splice(Math.min(gap, queue.length), 0, i);
+function refsOf(deck) { return deck.cards.map((_, i) => ({ deck, i })); }
+function learn(refs, flip, cram, title, back) {
+  const now = Date.now();
+  let items = refs.filter(r => { if (cram) return true; const c = srs(r.deck)[r.i]; return !c || !c.due || c.due <= now; });
+  if (!items.length) { app.innerHTML = `<h1>Nothing due</h1><p class="muted">Every card is scheduled for later. Recall it then, not now: the gap is what makes it stick.</p><button class="btn" id="back">Back</button>`; $('#back').onclick = back; return; }
+  const need = new Map(), got = new Map();
+  items.forEach(r => { need.set(r, cram ? 1 : criterion(r.deck, r.i)); got.set(r, 0); });
+  let queue = shuffle(items);
+  const totalNeed = items.reduce((t, r) => t + need.get(r), 0); let progress = 0, misses = 0;
+  const later = (r, gap) => queue.splice(Math.min(gap, queue.length), 0, r);
   const next = () => {
     if (!queue.length) {
-      app.innerHTML = `<h1>Session done</h1><p class="stat">${ids.length} cards to criterion · ${misses} misses along the way</p>
+      app.innerHTML = `<h1>Session done</h1><p class="stat mono">${items.length} cards to criterion · ${misses} misses along the way</p>
         <p class="small muted">${cram ? 'Cram does not change the schedule.' : 'Each card is now scheduled for its next relearning session.'}</p>
-        <button class="btn primary" id="back">Back to deck</button>`;
-      $('#back').onclick = () => deckView(deck); return;
+        <button class="btn primary" id="back">Back</button>`;
+      $('#back').onclick = back; return;
     }
-    const i = queue.shift(); const { q, a, img, aImg } = sides(deck, i, flip);
-    crumb(`${deck.title} · ${cram ? 'Cram' : 'Learn'} · ${got[i]}/${need[i]} correct`);
+    const r = queue.shift(); const { deck, i } = r; const { q, a, img, aImg } = sides(deck, i, flip);
+    crumb(`${title} · ${cram ? 'Cram' : 'Learn'} · ${got.get(r)}/${need.get(r)} correct`);
     app.innerHTML = `
       <div class="progress"><i style="width:${(progress / totalNeed) * 100}%"></i></div>
       <div class="card">${img}<div class="face">${esc(q)}</div>
@@ -229,14 +294,14 @@ function learn(deck, flip, cram) {
       const yes = $('#yes');
       if (j.multi) {
         const boxes = [...app.querySelectorAll('[data-part]')];
-        const sync = () => { yes.disabled = !boxes.every(b => b.checked); yes.style.opacity = yes.disabled ? .4 : 1; };
+        const sync = () => { yes.disabled = !boxes.every(b => b.checked); };
         boxes.forEach(b => b.onchange = sync); sync();
       }
-      $('#no').onclick = () => { misses++; if (!cram) markMissed(deck, i); later(i, 3); next(); };
+      $('#no').onclick = () => { misses++; if (!cram) markMissed(deck, i); later(r, 3); next(); };
       yes.onclick = () => {
-        got[i]++; progress++;
-        if (got[i] >= need[i]) { if (!cram) finishCard(deck, i); }
-        else later(i, 5);
+        got.set(r, got.get(r) + 1); progress++;
+        if (got.get(r) >= need.get(r)) { if (!cram) finishCard(deck, i); }
+        else later(r, 5);
         next();
       };
     };
@@ -269,7 +334,7 @@ function testView(deck, flip) {
           <p>${actual < 80 ? 'Under 80%: not ready yet. The cards you missed are due now in Learn.' : 'Over 80%. Keep your relearning sessions until the exam.'}</p>
           <div class="row"><button class="btn primary" id="miss">Learn the ${wrong.length} missed</button><button class="btn" id="back">Back</button></div>`;
         $('#back').onclick = () => deckView(deck);
-        $('#miss').onclick = () => learn(deck, flip, false);
+        $('#miss').onclick = () => learn(refsOf(deck), flip, false, deck.title, () => deckView(deck));
         return;
       }
       const i = order[k]; const { q, a, img, aImg } = sides(deck, i, flip);
@@ -324,6 +389,8 @@ function importView() {
     <h1>Import a deck</h1>
     <p class="small">In Quizlet: open the set, click <b>⋯</b> then <b>Export</b>, keep "Tab" between term and definition and "New line" between cards, then copy. Paste below.</p>
     <p class="small muted">Images: start a term with <code>img:URL |</code> to show a picture on the front, e.g. <code>img:https://.../olmec.jpg | Focus work 1</code>.</p>
+    <input type="text" id="topic" placeholder="Topic (e.g. Countries, ACCT Exam 3)">
+    <p></p>
     <input type="text" id="title" placeholder="Deck name">
     <p></p>
     <textarea id="raw" style="min-height:220px" placeholder="term&#9;definition"></textarea>
@@ -335,7 +402,7 @@ function importView() {
     const cards = parseImport($('#raw').value);
     if (!cards.length) { $('#msg').textContent = 'No cards found. Each line needs a term, a tab, then the definition.'; return; }
     const local = store.get('localDecks', []);
-    local.push({ id: 'local-' + Date.now(), title, cards });
+    local.push({ id: 'local-' + Date.now(), title, cards, topic: $('#topic').value.trim() || 'Imported' });
     store.set('localDecks', local);
     boot();
   };

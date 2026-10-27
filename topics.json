@@ -1,0 +1,9 @@
+[
+  {
+    "id": "arhi-exam3",
+    "title": "Art History · Exam 3",
+    "kind": "Class",
+    "exam": "2026-11-02",
+    "decks": ["arhi-exam3-works.json", "arhi-exam3-terms.json"]
+  }
+]
