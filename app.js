@@ -92,7 +92,7 @@ function judgeHTML(answer) {
 function crumb(t) { $('#crumb').textContent = t || ''; }
 function sides(deck, i, flip) {
   const c = deck.cards[i];
-  const pic = (c.image || c.wiki) ? art(deck, i) : '';
+  const pic = (c.image || c.wiki || c.commons) ? art(deck, i) : '';
   return flip ? { q: c.back, a: c.front, img: '', aImg: pic } : { q: c.front, a: c.back, img: pic, aImg: '' };
 }
 
@@ -103,29 +103,37 @@ const mediaCache = {};
 function art(deck, i) {
   const c = deck.cards[i];
   const q = encodeURIComponent((c.search || '') + ' artwork');
-  return `<figure class="art" data-deck="${esc(deck.id)}" data-i="${i}"><img alt="Artwork to identify">
-    <figcaption>${c.wiki ? '<button class="link" data-next>Wrong image? Next</button> · ' : ''}<a href="https://www.google.com/search?tbm=isch&q=${q}" target="_blank" rel="noopener">Search images</a></figcaption></figure>`;
+  return `<figure class="art" data-deck="${esc(deck.id)}" data-i="${i}"><img alt="Artwork to identify" referrerpolicy="no-referrer">
+    <figcaption>${(c.wiki || c.commons) ? '<button class="link" data-next>Wrong image? Next</button> · ' : ''}<a href="https://www.google.com/search?tbm=isch&q=${q}" target="_blank" rel="noopener">Search images</a></figcaption></figure>`;
 }
-async function mediaList(titles) {
-  const k = titles.join('|');
+// Image sources, tried in order: Wikimedia Commons file search (best for a specific view), the Wikipedia
+// article's images, then a Wikipedia search. All are public APIs that allow browser requests (origin=*).
+async function getJSON(u) { const r = await fetch(u); if (!r.ok) throw 0; return r.json(); }
+const big = s => s && !/\.svg/i.test(s) && !/icon|logo|map|flag|symbol|location/i.test(s);
+async function fromCommons(q) {
+  const u = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrnamespace=6&gsrlimit=10&prop=imageinfo&iiprop=url|mime&iiurlwidth=1200&gsrsearch=' + encodeURIComponent(q);
+  const j = await getJSON(u); const pages = Object.values((j.query || {}).pages || {}).sort((a, b) => a.index - b.index);
+  return pages.map(p => p.imageinfo && p.imageinfo[0]).filter(i => i && /jpeg|png/.test(i.mime)).map(i => i.thumburl || i.url).filter(big);
+}
+async function fromArticle(t) {
+  const j = await getJSON('https://en.wikipedia.org/api/rest_v1/page/media-list/' + encodeURIComponent(t));
+  return (j.items || []).filter(it => it.type === 'image' && it.srcset && it.srcset.length)
+    .map(it => { let s = it.srcset[it.srcset.length - 1].src; return s.startsWith('//') ? 'https:' + s : s; }).filter(big);
+}
+async function fromSearch(q) {
+  const u = 'https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrlimit=3&prop=pageimages&piprop=original&gsrsearch=' + encodeURIComponent(q);
+  const j = await getJSON(u); return Object.values((j.query || {}).pages || {}).sort((a, b) => a.index - b.index).map(p => p.original && p.original.source).filter(big);
+}
+async function mediaList(c) {
+  const k = 'v2|' + (c.commons || '') + '|' + (c.wiki || []).join('|');
   if (mediaCache[k]) return mediaCache[k];
   const saved = store.get('media:' + k, null);
   if (saved && saved.length) return (mediaCache[k] = saved);
-  const out = [];
-  for (const t of titles) {
-    try {
-      const r = await fetch('https://en.wikipedia.org/api/rest_v1/page/media-list/' + encodeURIComponent(t));
-      if (!r.ok) continue;
-      const j = await r.json();
-      for (const it of j.items || []) {
-        if (it.type !== 'image' || !it.srcset || !it.srcset.length) continue;
-        let src = it.srcset[it.srcset.length - 1].src;
-        if (/\.svg/i.test(src)) continue;
-        if (src.startsWith('//')) src = 'https:' + src;
-        out.push(src);
-      }
-    } catch {}
-  }
+  let out = [];
+  if (c.commons) { try { out.push(...await fromCommons(c.commons)); } catch {} }
+  for (const t of c.wiki || []) { try { out.push(...await fromArticle(t)); } catch {} }
+  if (!out.length && c.search) { try { out.push(...await fromSearch(c.search)); } catch {} }
+  out = [...new Set(out)];
   if (out.length) store.set('media:' + k, out);
   return (mediaCache[k] = out);
 }
@@ -133,10 +141,11 @@ async function hydrate(fig) {
   const deck = decks.find(d => d.id === fig.dataset.deck); if (!deck) return;
   const i = +fig.dataset.i, c = deck.cards[i], img = fig.querySelector('img');
   if (c.image) { img.src = c.image; return; }
-  const list = await mediaList(c.wiki);
-  if (!list.length) { img.remove(); fig.querySelector('[data-next]')?.remove(); return; }
+  const list = await mediaList(c);
+  if (!list.length) { img.remove(); fig.querySelector('[data-next]')?.remove(); fig.insertAdjacentHTML('afterbegin', '<p class="small muted">No picture found. Use Search images.</p>'); return; }
   const pick = store.get('pick:' + deck.id + ':' + i, 0) % list.length;
   img.src = list[pick];
+  img.onerror = () => { const n = (pick + 1) % list.length; if (n !== pick && !img.dataset.tried) { img.dataset.tried = 1; store.set('pick:' + deck.id + ':' + i, n); img.src = list[n]; } };
   const nb = fig.querySelector('[data-next]');
   if (nb) nb.onclick = e => { e.preventDefault(); store.set('pick:' + deck.id + ':' + i, (pick + 1) % list.length); hydrate(fig); };
 }
