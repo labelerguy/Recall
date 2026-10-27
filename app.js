@@ -51,8 +51,57 @@ function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { co
 function crumb(t) { $('#crumb').textContent = t || ''; }
 function sides(deck, i, flip) {
   const c = deck.cards[i];
-  return flip ? { q: c.back, a: c.front, img: null, aImg: c.image } : { q: c.front, a: c.back, img: c.image, aImg: null };
+  const pic = (c.image || c.wiki) ? art(deck, i) : '';
+  return flip ? { q: c.back, a: c.front, img: '', aImg: pic } : { q: c.front, a: c.back, img: pic, aImg: '' };
 }
+
+// ---------- artwork images ----------
+// A card can carry "image": URL, or "wiki": [Wikipedia titles]. Wiki images load live from Wikipedia;
+// if the first one is the wrong view, "Next image" cycles through that article's pictures and remembers the pick.
+const mediaCache = {};
+function art(deck, i) {
+  const c = deck.cards[i];
+  const q = encodeURIComponent((c.search || '') + ' artwork');
+  return `<figure class="art" data-deck="${esc(deck.id)}" data-i="${i}"><img alt="Artwork to identify">
+    <figcaption>${c.wiki ? '<button class="link" data-next>Wrong image? Next</button> · ' : ''}<a href="https://www.google.com/search?tbm=isch&q=${q}" target="_blank" rel="noopener">Search images</a></figcaption></figure>`;
+}
+async function mediaList(titles) {
+  const k = titles.join('|');
+  if (mediaCache[k]) return mediaCache[k];
+  const saved = store.get('media:' + k, null);
+  if (saved && saved.length) return (mediaCache[k] = saved);
+  const out = [];
+  for (const t of titles) {
+    try {
+      const r = await fetch('https://en.wikipedia.org/api/rest_v1/page/media-list/' + encodeURIComponent(t));
+      if (!r.ok) continue;
+      const j = await r.json();
+      for (const it of j.items || []) {
+        if (it.type !== 'image' || !it.srcset || !it.srcset.length) continue;
+        let src = it.srcset[it.srcset.length - 1].src;
+        if (/\.svg/i.test(src)) continue;
+        if (src.startsWith('//')) src = 'https:' + src;
+        out.push(src);
+      }
+    } catch {}
+  }
+  if (out.length) store.set('media:' + k, out);
+  return (mediaCache[k] = out);
+}
+async function hydrate(fig) {
+  const deck = decks.find(d => d.id === fig.dataset.deck); if (!deck) return;
+  const i = +fig.dataset.i, c = deck.cards[i], img = fig.querySelector('img');
+  if (c.image) { img.src = c.image; return; }
+  const list = await mediaList(c.wiki);
+  if (!list.length) { img.remove(); fig.querySelector('[data-next]')?.remove(); return; }
+  const pick = store.get('pick:' + deck.id + ':' + i, 0) % list.length;
+  img.src = list[pick];
+  const nb = fig.querySelector('[data-next]');
+  if (nb) nb.onclick = e => { e.preventDefault(); store.set('pick:' + deck.id + ':' + i, (pick + 1) % list.length); hydrate(fig); };
+}
+new MutationObserver(() => {
+  document.querySelectorAll('figure.art:not([data-done])').forEach(f => { f.dataset.done = '1'; hydrate(f); });
+}).observe(document.getElementById('app'), { childList: true, subtree: true });
 
 // ---------- home ----------
 function home() {
@@ -132,7 +181,7 @@ function learn(deck, flip, cram) {
     app.innerHTML = `
       <div class="progress"><i style="width:${(done / total) * 100}%"></i></div>
       <div class="card">
-        ${img ? `<img src="${esc(img)}" alt="">` : ''}
+        ${img}
         <div class="face">${esc(q)}</div>
         <textarea id="ans" placeholder="Type or say your answer first (optional), then reveal"></textarea>
         <button class="btn primary" id="show">Reveal <span class="kbd">space</span></button>
@@ -141,10 +190,10 @@ function learn(deck, flip, cram) {
     const reveal = () => {
       const typed = ans.value.trim();
       app.querySelector('.card').innerHTML = `
-        ${img ? `<img src="${esc(img)}" alt="">` : ''}
+        ${img}
         <div class="face">${esc(q)}</div>
         ${typed ? `<div class="yours">You said: ${esc(typed)}</div>` : ''}
-        <div class="back">${aImg ? `<img src="${esc(aImg)}" alt="">` : ''}${esc(a)}</div>
+        <div class="back">${aImg}${esc(a)}</div>
         <div class="row">
           <button class="btn again" data-g="again">Missed <span class="kbd">1</span></button>
           <button class="btn good" data-g="good">Got it <span class="kbd">2</span></button>
@@ -195,7 +244,7 @@ function testView(deck, flip) {
       app.innerHTML = `
         <div class="progress"><i style="width:${(k / order.length) * 100}%"></i></div>
         <div class="card">
-          ${img ? `<img src="${esc(img)}" alt="">` : ''}
+          ${img}
           <div class="face">${esc(q)}</div>
           <textarea id="ans" placeholder="Write the full answer from memory"></textarea>
           <button class="btn primary" id="show">Check</button>
@@ -204,10 +253,10 @@ function testView(deck, flip) {
       $('#show').onclick = () => {
         const typed = $('#ans').value.trim();
         app.querySelector('.card').innerHTML = `
-          ${img ? `<img src="${esc(img)}" alt="">` : ''}
+          ${img}
           <div class="face">${esc(q)}</div>
           <div class="yours">You wrote: ${esc(typed || '(nothing)')}</div>
-          <div class="back">${aImg ? `<img src="${esc(aImg)}" alt="">` : ''}${esc(a)}</div>
+          <div class="back">${aImg}${esc(a)}</div>
           <p class="small muted">Count it right only if you had all of it.</p>
           <div class="row"><button class="btn again" id="no">Wrong</button><button class="btn good" id="yes">Right</button></div>`;
         $('#yes').onclick = () => { right++; k++; step(); };
@@ -226,9 +275,9 @@ function flipCards(deck, flip) {
     crumb(`${deck.title} · ${k + 1}/${order.length}`);
     app.innerHTML = `
       <div class="card" id="c" tabindex="0">
-        ${img ? `<img src="${esc(img)}" alt="">` : ''}
+        ${img}
         <div class="face">${esc(q)}</div>
-        ${shown ? `<div class="back">${aImg ? `<img src="${esc(aImg)}" alt="">` : ''}${esc(a)}</div>` : ''}
+        ${shown ? `<div class="back">${aImg}${esc(a)}</div>` : ''}
       </div>
       <div class="row"><button class="btn" id="p">Prev</button><button class="btn primary" id="f">Flip <span class="kbd">space</span></button><button class="btn" id="n">Next</button><button class="btn" id="back">Done</button></div>
       <p class="small muted">Flip cards are recognition, the weakest mode. Use Learn or Test before an exam.</p>`;
@@ -265,7 +314,13 @@ function importView() {
   };
 }
 function parseImport(raw) {
-  return raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => {
+  // Quizlet exports can put line breaks inside a definition: a line with no tab continues the previous card.
+  const rows = [];
+  for (const l of raw.split(/\r?\n/)) {
+    if (!l.trim()) continue;
+    if (l.includes('\t') || !rows.length) rows.push(l); else rows[rows.length - 1] += '\n' + l.trim();
+  }
+  return rows.map(l => {
     let [front, ...rest] = l.split('\t'); let back = rest.join('\t');
     if (!back && l.includes(' - ')) [front, back] = [l.slice(0, l.indexOf(' - ')), l.slice(l.indexOf(' - ') + 3)];
     let image;
