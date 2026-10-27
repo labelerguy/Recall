@@ -181,6 +181,7 @@ function home() {
         <div class="stat-row"><span>Due today</span><b class="mono ${dueAll ? 'gold' : ''}">${dueAll}</b></div>
         <div class="stat-row"><span>Next exam</span><b class="mono">${nx ? `${daysTo(nx.exMs)}d` : '—'}</b></div>
         ${nx ? `<p class="small muted">${esc(nx.t.title)}</p>` : ''}
+        <div class="stat-row"><span>This week</span><b class="mono">${(() => { const w = store.get('log', []).filter(x => x.at > Date.now() - 7 * DAY); return `${w.length} · ${w.reduce((n, x) => n + x.mins, 0)}m`; })()}</b></div>
         <div class="stat-row"><span>Cards learned</span><b class="mono">${learnedAll}/${totalAll}</b></div>
         <div class="stat-row"><span>Last test</span><b class="mono">${last ? `${last.actual}%` : '—'}</b></div>
         ${last ? `<p class="small muted">You predicted ${last.predicted}%. Gap ${last.actual - last.predicted > 0 ? '+' : ''}${last.actual - last.predicted}.</p>` : '<p class="small muted">Run a blank-page test to see how your guess compares to your score.</p>'}
@@ -204,7 +205,7 @@ function topicView(t) {
     <p class="mono muted">${st.learned}/${st.total} learned · ${st.due} due today${st.exMs && st.exMs > Date.now() ? ` · exam in ${daysTo(st.exMs)} days` : ''}</p>
     <label class="opt">Exam or goal date <input type="date" id="exam" value="${examStr(t) || ''}"></label>
     <p class="small muted">${examStr(t) ? 'Every deck here is spaced to this date.' : 'No date: Recall spaces for retention a month out.'}</p>
-    <div class="row"><button class="btn primary" id="all" ${st.due ? '' : 'disabled'}>Study everything due (${st.due})</button></div>
+    <div class="row">${(() => { const sv = savedSession('topic:' + t.id, false); return sv ? `<button class="btn primary" id="all">Resume session (${sv.queue.length} left)</button>` : `<button class="btn primary" id="all" ${st.due ? '' : 'disabled'}>Study everything due (${st.due})</button>`; })()}</div>
     <p class="small muted">Mixes cards from every deck in this topic. Mixed practice beat grouped practice for telling artists apart (Kornell & Bjork 2008).</p>
     <h2 class="section">Decks</h2>
     ${t.decks.map((d, n) => `
@@ -214,7 +215,7 @@ function topicView(t) {
       </div>`).join('')}`;
   $('#up').onclick = home;
   $('#exam').onchange = e => { store.set('exam:' + t.id, e.target.value || null); topicView(t); };
-  $('#all').onclick = () => learn(t.decks.flatMap(d => d.cards.map((_, i) => ({ deck: d, i }))), false, false, t.title, () => topicView(t));
+  $('#all').onclick = () => learn(t.decks.flatMap(d => d.cards.map((_, i) => ({ deck: d, i }))), false, false, t.title, () => topicView(t), 'topic:' + t.id);
   app.querySelectorAll('.deck').forEach(el => {
     const go = () => deckView(t.decks[+el.dataset.n]);
     el.onclick = go; el.onkeydown = e => { if (e.key === 'Enter') go(); };
@@ -233,18 +234,19 @@ function deckView(deck) {
     <p class="muted stat">${deck.cards.length} cards · ${dueCount(deck)} due today</p>
     <label class="opt"><input type="checkbox" id="flip"> Answer with the term (show definition first)</label>
     <div class="row">
-      <button class="btn primary" id="learn">Learn (due cards)</button>
-      <button class="btn" id="cram">Cram all</button>
+      <button class="btn primary" id="learn">${savedSession(deck.id, false) ? `Resume Learn (${savedSession(deck.id, false).queue.length} left)` : 'Learn (due cards)'}</button>
+      <button class="btn" id="cram">${savedSession(deck.id, true) ? `Resume Cram (${savedSession(deck.id, true).queue.length} left)` : 'Cram all'}</button>
       <button class="btn" id="test">Blank-page test</button>
       <button class="btn" id="cards">Flip cards</button>
     </div>
     <p class="small muted"><b>Learn</b>: recall each card to criterion, then it comes back on a schedule set by your exam date. <b>Cram</b>: every card once, last day only. <b>Test</b>: predict, then prove it. <a href="RESEARCH.md" target="_blank" rel="noopener">Why it works this way</a></p>
+    ${(() => { const L = store.get('log', []).filter(x => x.title === deck.title).slice(-6).reverse(); return L.length ? `<h2>Study sessions</h2><table><tr><th>Date</th><th>Cards</th><th>Misses</th><th>Min</th></tr>${L.map(x => `<tr><td>${new Date(x.at).toLocaleDateString()}</td><td>${x.cards}</td><td>${x.misses}</td><td>${x.mins}</td></tr>`).join('')}</table>` : ''; })()}
     ${hist ? `<h2>Test history</h2><table><tr><th>Date</th><th>Predicted</th><th>Actual</th><th>Gap</th></tr>${hist}</table>` : ''}
     ${deck.source === 'local' ? '<div class="row"><button class="btn" id="dl">Copy deck file (to add to the repo)</button><button class="btn" id="del">Delete deck</button></div>' : ''}`;
   const flip = () => $('#flip').checked;
   $('#up').onclick = () => topicView(deck.topic);
-  $('#learn').onclick = () => learn(refsOf(deck), flip(), false, deck.title, () => deckView(deck));
-  $('#cram').onclick = () => learn(refsOf(deck), flip(), true, deck.title, () => deckView(deck));
+  $('#learn').onclick = () => learn(refsOf(deck), flip(), false, deck.title, () => deckView(deck), deck.id);
+  $('#cram').onclick = () => learn(refsOf(deck), flip(), true, deck.title, () => deckView(deck), deck.id);
   $('#test').onclick = () => testView(deck, flip());
   $('#cards').onclick = () => flipCards(deck, flip());
   if (deck.source === 'local') {
@@ -264,29 +266,55 @@ function deckView(deck) {
 // and missed cards come back later in the same session, after other cards (spaced, interleaved).
 // Cram: every card once to criterion 1, schedule untouched. Use it only in the last day or two.
 function refsOf(deck) { return deck.cards.map((_, i) => ({ deck, i })); }
-function learn(refs, flip, cram, title, back) {
-  const now = Date.now();
-  let items = refs.filter(r => { if (cram) return true; const c = srs(r.deck)[r.i]; return !c || !c.due || c.due <= now; });
-  if (!items.length) { app.innerHTML = `<h1>Nothing due</h1><p class="muted">Every card is scheduled for later. Recall it then, not now: the gap is what makes it stick.</p><button class="btn" id="back">Back</button>`; $('#back').onclick = back; return; }
-  const need = new Map(), got = new Map();
-  items.forEach(r => { need.set(r, cram ? 1 : criterion(r.deck, r.i)); got.set(r, 0); });
-  let queue = shuffle(items);
-  const totalNeed = items.reduce((t, r) => t + need.get(r), 0); let progress = 0, misses = 0;
+function sessionKey(key, cram) { return 'session:' + (cram ? 'cram:' : 'learn:') + key; }
+function savedSession(key, cram) { return store.get(sessionKey(key, cram), null); }
+function logSession(entry) { const log = store.get('log', []); log.push(entry); store.set('log', log.slice(-500)); }
+function learn(refs, flip, cram, title, back, key) {
+  key = key || title;
+  const sk = sessionKey(key, cram);
+  const saved = store.get(sk, null);
+  let items, need = new Map(), got = new Map(), queue, progress = 0, misses = 0, active = 0, started = Date.now();
+  const byId = (d, i) => refs.find(r => r.deck.id === d && r.i === i);
+  if (saved && saved.items) {
+    // resume exactly where you left off
+    items = saved.items.map(([d, i]) => byId(d, i)).filter(Boolean);
+    items.forEach((r, n) => { need.set(r, saved.need[n]); got.set(r, saved.got[n]); });
+    queue = saved.queue.map(n => items[n]).filter(Boolean);
+    progress = saved.progress; misses = saved.misses; active = saved.active || 0; started = saved.started; flip = saved.flip;
+  } else {
+    const now = Date.now();
+    items = refs.filter(r => { if (cram) return true; const c = srs(r.deck)[r.i]; return !c || !c.due || c.due <= now; });
+    if (!items.length) { app.innerHTML = `<h1>Nothing due</h1><p class="muted">Every card is scheduled for later. Recall it then, not now: the gap is what makes it stick.</p><button class="btn" id="back">Back</button>`; $('#back').onclick = back; return; }
+    items.forEach(r => { need.set(r, cram ? 1 : criterion(r.deck, r.i)); got.set(r, 0); });
+    queue = shuffle(items);
+  }
+  const totalNeed = items.reduce((t, r) => t + need.get(r), 0);
+  let lastAct = Date.now();
+  const tick = () => { const n = Date.now(); active += Math.min(n - lastAct, 5 * 60000); lastAct = n; };
+  const save = () => store.set(sk, {
+    items: items.map(r => [r.deck.id, r.i]), need: items.map(r => need.get(r)), got: items.map(r => got.get(r)),
+    queue: queue.map(r => items.indexOf(r)), progress, misses, active, started, flip, title, at: Date.now() });
   const later = (r, gap) => queue.splice(Math.min(gap, queue.length), 0, r);
   const next = () => {
     if (!queue.length) {
-      app.innerHTML = `<h1>Session done</h1><p class="stat mono">${items.length} cards to criterion · ${misses} misses along the way</p>
-        <p class="small muted">${cram ? 'Cram does not change the schedule.' : 'Each card is now scheduled for its next relearning session.'}</p>
+      try { localStorage.removeItem('recall:' + sk); } catch {}
+      const mins = Math.max(1, Math.round(active / 60000));
+      logSession({ at: Date.now(), title, cards: items.length, misses, mins, cram: !!cram });
+      app.innerHTML = `<h1>Session done</h1><p class="stat mono">${items.length} cards to criterion · ${misses} misses · ${mins} min</p>
+        <p class="small muted">${cram ? 'Cram does not change the schedule.' : 'Each card is now scheduled for its next relearning session.'} Saved to your history.</p>
         <button class="btn primary" id="back">Back</button>`;
       $('#back').onclick = back; return;
     }
-    const r = queue.shift(); const { deck, i } = r; const { q, a, img, aImg } = sides(deck, i, flip);
+    save();
+    const r = queue[0]; const { deck, i } = r; const { q, a, img, aImg } = sides(deck, i, flip);
     crumb(`${title} · ${cram ? 'Cram' : 'Learn'} · ${got.get(r)}/${need.get(r)} correct`);
     app.innerHTML = `
       <div class="progress"><i style="width:${(progress / totalNeed) * 100}%"></i></div>
       <div class="card">${img}<div class="face">${esc(q)}</div>
         <textarea id="ans" placeholder="Answer from memory first. Type it or say it out loud."></textarea>
-        <button class="btn primary" id="show">Reveal</button></div>`;
+        <button class="btn primary" id="show">Reveal</button></div>
+      <div class="row"><button class="btn ghost" id="pause">Save and exit</button><span class="small muted" style="align-self:center">Progress saves after every card.</span></div>`;
+    $('#pause').onclick = () => { tick(); save(); back(); };
     const ans = $('#ans'); ans.focus();
     $('#show').onclick = () => {
       const typed = ans.value.trim(); const j = judgeHTML(a);
@@ -299,8 +327,9 @@ function learn(refs, flip, cram, title, back) {
         const sync = () => { yes.disabled = !boxes.every(b => b.checked); };
         boxes.forEach(b => b.onchange = sync); sync();
       }
-      $('#no').onclick = () => { misses++; if (!cram) markMissed(deck, i); later(r, 3); next(); };
+      $('#no').onclick = () => { tick(); queue.shift(); misses++; if (!cram) markMissed(deck, i); later(r, 3); next(); };
       yes.onclick = () => {
+        tick(); queue.shift();
         got.set(r, got.get(r) + 1); progress++;
         if (got.get(r) >= need.get(r)) { if (!cram) finishCard(deck, i); }
         else later(r, 5);
@@ -336,7 +365,7 @@ function testView(deck, flip) {
           <p>${actual < 80 ? 'Under 80%: not ready yet. The cards you missed are due now in Learn.' : 'Over 80%. Keep your relearning sessions until the exam.'}</p>
           <div class="row"><button class="btn primary" id="miss">Learn the ${wrong.length} missed</button><button class="btn" id="back">Back</button></div>`;
         $('#back').onclick = () => deckView(deck);
-        $('#miss').onclick = () => learn(refsOf(deck), flip, false, deck.title, () => deckView(deck));
+        $('#miss').onclick = () => { try { localStorage.removeItem('recall:' + sessionKey(deck.id, false)); } catch {} learn(refsOf(deck), flip, false, deck.title, () => deckView(deck), deck.id); };
         return;
       }
       const i = order[k]; const { q, a, img, aImg } = sides(deck, i, flip);
