@@ -1,0 +1,33 @@
+{
+ "title": "Gothic cathedrals: the 5 design elements",
+ "cards": [
+  {
+   "front": "List the 5 design elements of Gothic cathedrals.",
+   "back": "Element one: Pointed arches\nElement two: Rib vaults\nElement three: Exposed flying buttresses\nElement four: Stained glass / rose window\nElement five: Tracery\n• Lux nova is NOT one of the five. It's the term for how the stained-glass light was described."
+  },
+  {
+   "front": "Is lux nova one of the 5 Gothic design elements?",
+   "back": "No. Lux nova (\"new light\") is the term for how the light through stained glass was described, not a structural element."
+  },
+  {
+   "front": "Pointed arch: what does it do for a Gothic cathedral?",
+   "back": "Pushes weight more downward than a rounded arch, so walls can be taller and thinner."
+  },
+  {
+   "front": "Rib vault: what does it do?",
+   "back": "Stone ribs carry the ceiling's load, so the panels between them can be thin and light."
+  },
+  {
+   "front": "Exposed flying buttress: what does it do?",
+   "back": "An exterior arch braces the upper walls from outside, so the walls can be thin and full of windows."
+  },
+  {
+   "front": "Stained glass / rose window: what is it?",
+   "back": "Colored glass pieces held by lead strips forming images; a rose window is a large circular one. It fills the church with colored light (lux nova)."
+  },
+  {
+   "front": "Tracery: what is it?",
+   "back": "Ornamental stonework that holds the glass in a window and forms its patterns."
+  }
+ ]
+}

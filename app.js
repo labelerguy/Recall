@@ -78,13 +78,13 @@ function markMissed(deck, i) { const s = srs(deck); const c = s[i] || { sessions
 const esc = t => String(t ?? '').replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
 function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 function parts(text) {
-  const rows = String(text).split('\n').map(l => l.match(/^([A-Za-z][A-Za-z /]{1,24}):\s*(.+)$/)).filter(Boolean);
+  const rows = String(text).split('\n').map(l => l.match(/^([A-Za-z][A-Za-z /]{1,40}):\s*(.+)$/)).filter(Boolean);
   return rows.length >= 2 ? rows.map(m => ({ label: m[1], value: m[2] })) : null;
 }
 function judgeHTML(answer) {
   const p = parts(answer);
   if (!p) return { html: `<div class="back">${esc(answer)}</div>`, multi: false };
-  const extra = String(answer).split('\n').filter(l => !/^([A-Za-z][A-Za-z /]{1,24}):\s*(.+)$/.test(l) && l.trim());
+  const extra = String(answer).split('\n').filter(l => !/^([A-Za-z][A-Za-z /]{1,40}):\s*(.+)$/.test(l) && l.trim());
   return { multi: true, html: `<div class="back"><p class="small muted">Check off only the parts you actually had. It counts as right only if you had every part.</p>` +
     p.map((x, k) => `<label class="part"><input type="checkbox" data-part="${k}"> <span><b>${esc(x.label)}:</b> ${esc(x.value)}</span></label>`).join('') +
     extra.map(l => `<p class="small muted" style="margin-top:10px">${esc(l)}</p>`).join('') + '</div>' };

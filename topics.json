@@ -4,6 +4,20 @@
     "title": "Art History · Exam 3",
     "kind": "Class",
     "exam": "2026-11-02",
-    "decks": ["arhi-exam3-works.json", "arhi-exam3-terms.json"]
+    "decks": [
+      "arhi-exam3-works.json",
+      "arhi-exam3-gothic.json",
+      "arhi-exam3-essay.json",
+      "arhi-exam3-terms.json"
+    ]
+  },
+  {
+    "id": "arhi-final",
+    "title": "Art History · Final",
+    "kind": "Class",
+    "exam": "2026-12-18",
+    "decks": [
+      "arhi-final-northern.json"
+    ]
   }
 ]
