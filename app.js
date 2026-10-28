@@ -89,6 +89,16 @@ function judgeHTML(answer) {
     p.map((x, k) => `<label class="part"><input type="checkbox" data-part="${k}"> <span><b>${esc(x.label)}:</b> ${esc(x.value)}</span></label>`).join('') +
     extra.map(l => `<p class="small muted" style="margin-top:10px">${esc(l)}</p>`).join('') + '</div>' };
 }
+// Elaboration (Pressley et al. 1988; Rogers, Kuiper & Kirker 1977): explain why it's true or tie it to your own life.
+// Asked when a card is new or was just missed; your note comes back on later reveals.
+function elabHTML(deck, i, ask) {
+  const saved = store.get('elab:' + deck.id + ':' + i, '');
+  if (!ask && !saved) return '';
+  if (!ask) return `<div class="elab"><p class="small muted">Your connection</p><p>${esc(saved)}</p></div>`;
+  return `<div class="elab"><label for="elab" class="small"><b>Make it stick:</b> why is this true, or what does it connect to in your own life?</label>
+    <textarea id="elab" placeholder="One line in your own words (optional)">${esc(saved)}</textarea></div>`;
+}
+function wireElab(deck, i) { const t = document.getElementById('elab'); if (t) t.oninput = () => store.set('elab:' + deck.id + ':' + i, t.value.trim()); }
 function crumb(t) { $('#crumb').textContent = t || ''; }
 function sides(deck, i, flip) {
   const c = deck.cards[i];
@@ -303,6 +313,7 @@ function learn(refs, flip, cram, title, back, key) {
   const save = () => store.set(sk, {
     items: items.map(r => [r.deck.id, r.i]), need: items.map(r => need.get(r)), got: items.map(r => got.get(r)),
     queue: queue.map(r => items.indexOf(r)), progress, misses, active, started, flip, title, at: Date.now() });
+  const missedNow = new Set();
   const later = (r, gap) => queue.splice(Math.min(gap, queue.length), 0, r);
   const next = () => {
     if (!queue.length) {
@@ -316,11 +327,14 @@ function learn(refs, flip, cram, title, back, key) {
     }
     save();
     const r = queue[0]; const { deck, i } = r; const { q, a, img, aImg } = sides(deck, i, flip);
+    const prior = srs(deck)[i]; const isNew = !prior || !prior.sessions;
+    const firstTry = isNew && got.get(r) === 0 && !missedNow.has(r);
     crumb(`${title} · ${cram ? 'Cram' : 'Learn'} · ${got.get(r)}/${need.get(r)} correct`);
     app.innerHTML = `
       <div class="progress"><i style="width:${(progress / totalNeed) * 100}%"></i></div>
       <div class="card">${img}<div class="face">${esc(q)}</div>
-        <textarea id="ans" placeholder="Answer from memory first. Type it or say it out loud."></textarea>
+        ${firstTry ? '<p class="small muted">New card: guess before you look, even if you have no idea. A wrong guess still helps you learn it.</p>' : ''}
+        <textarea id="ans" placeholder="${firstTry ? 'Your best guess' : 'Answer from memory first. Type it or say it out loud.'}"></textarea>
         <button class="btn primary" id="show">Reveal</button></div>
       <div class="row"><button class="btn ghost" id="pause">Save and exit</button><span class="small muted" style="align-self:center">Progress saves after every card.</span></div>`;
     $('#pause').onclick = () => { tick(); save(); back(); };
@@ -329,14 +343,16 @@ function learn(refs, flip, cram, title, back, key) {
       const typed = ans.value.trim(); const j = judgeHTML(a);
       app.querySelector('.card').innerHTML = `${img}<div class="face">${esc(q)}</div>
         ${typed ? `<div class="yours">You said: ${esc(typed)}</div>` : ''}${aImg}${j.html}
+        ${elabHTML(deck, i, isNew && got.get(r) === 0 || missedNow.has(r))}
         <div class="row"><button class="btn again" id="no">Missed</button><button class="btn good" id="yes">Got it all</button></div>`;
+      wireElab(deck, i);
       const yes = $('#yes');
       if (j.multi) {
         const boxes = [...app.querySelectorAll('[data-part]')];
         const sync = () => { yes.disabled = !boxes.every(b => b.checked); };
         boxes.forEach(b => b.onchange = sync); sync();
       }
-      $('#no').onclick = () => { tick(); queue.shift(); misses++; if (!cram) markMissed(deck, i); later(r, 3); next(); };
+      $('#no').onclick = () => { tick(); queue.shift(); misses++; missedNow.add(r); if (!cram) markMissed(deck, i); later(r, 3); next(); };
       yes.onclick = () => {
         tick(); queue.shift();
         got.set(r, got.get(r) + 1); progress++;

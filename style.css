@@ -107,3 +107,6 @@ figure.art img{max-width:100%;max-height:380px;object-fit:contain;border-radius:
 figure.art figcaption{font-size:14px;color:var(--ink3)}
 code{font-family:var(--mono);font-size:14px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+.elab{display:flex;flex-direction:column;gap:8px;padding:14px 16px;border-radius:var(--r-md);box-shadow:var(--raise-sm)}
+.elab textarea{min-height:64px}
+.elab p{margin:0}

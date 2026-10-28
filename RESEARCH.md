@@ -73,8 +73,28 @@ Both are verified. Showing the gap is Recall's design choice based on those find
 
 ---
 
+## 8. Explain why it's true, or tie it to your own life
+**What Recall does:** when a card is new, or after you miss it, the answer screen asks: "Why is this true, or what does it connect to in your own life?" It's optional and one line. Whatever you write comes back on that card's later reveals as "Your connection."
+
+**Studies:**
+- Pressley, M., Symons, S., McDaniel, M. A., Snyder, B. L., & Turnure, J. E. (1988). Elaborative interrogation facilitates acquisition of confusing facts. *Journal of Educational Psychology, 80*(3), 268–278. https://doi.org/10.1037/0022-0663.80.3.268. **Verified (abstract).**
+  - **Design:** adults learned facts by building a reason for why each fact made sense, by forming a mental image of it, or by reading it carefully.
+  - **Result:** both generating a reason and imagery produced substantially better memory than careful reading, with no reliable difference between the two.
+- Rogers, T. B., Kuiper, N. A., & Kirker, W. S. (1977). Self-reference and the encoding of personal information. *Journal of Personality and Social Psychology, 35*(9), 677–688. **Verified (full text).**
+  - **Design:** people judged words by their letters, their sound, their meaning, or whether the word described themselves.
+  - **Result:** words judged against the self were recalled best: **.30 vs .13** for meaning in Experiment 1, and **.32 vs .19** in Experiment 2. The authors note the advantage weakened in some adjusted analyses.
+
+## 9. Guess before you've learned it
+**What Recall does:** the first time you see a new card, it asks for your best guess before showing the answer, even if you have no idea.
+
+**Study:** Richland, L. E., Kornell, N., & Kao, L. S. (2009). The pretesting effect: Do unsuccessful retrieval attempts enhance learning? *Journal of Experimental Psychology: Applied, 15*(3), 243–257. https://doi.org/10.1037/a0016496. **Verified (full text).**
+- **Design:** students either tried to answer questions before reading a passage, or got extra study time instead.
+- **Result:** pretested items scored higher on the final test even though students got almost all pretest questions wrong: **75% vs 56%** (Experiment 1), and **55% vs 45%** after one week (Experiment 4). Items answered *wrong* on the pretest were still remembered better than with extra study.
+
 ## What was removed for lacking a primary source
 - **The "Easy" button and fixed review intervals (1, 3, 7, 14, 30, 60 days).** Those are common in flashcard apps, but the specific numbers had no study behind them. They were replaced by #2 and #3.
+- **"Time each review just before you would forget."** It's a popular rule on social media, but the primary studies checked here support spacing by time-to-exam (#3), not predicting a forgetting point per card.
+- **Brain-mechanism claims** (hippocampus "facilitating stronger synaptic connections," "biological reinforcement"). These come from unsourced posts. Recall's rules are based on what improved test scores in controlled studies, not on neural explanations.
 - **Any "learning style" setting.** Matching material to a preferred style (visual, auditory) has not been supported in controlled tests. Recall has no such setting.
 
 ## Adding a new feature
