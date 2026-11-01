@@ -12,6 +12,15 @@
     ]
   },
   {
+    "id": "arhi-kimbell",
+    "title": "Art History · Kimbell paper",
+    "kind": "Class",
+    "exam": "2026-11-08",
+    "decks": [
+      "arhi-kimbell-formal.json"
+    ]
+  },
+  {
     "id": "arhi-final",
     "title": "Art History · Final",
     "kind": "Class",
