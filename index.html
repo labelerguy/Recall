@@ -9,14 +9,17 @@
 <meta name="apple-mobile-web-app-title" content="Recall">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="style.css?v=10">
+<link rel="stylesheet" href="style.css?v=11">
 </head>
 <body>
 <header class="top">
   <button class="brand" id="homeBtn" aria-label="Recall home"><span class="o">RE</span>CALL</button>
   <span class="tag" id="crumb"></span>
+  <button class="coach" id="coachBtn" aria-label="Study coach" aria-haspopup="dialog" aria-expanded="false" aria-controls="coachPanel"><span class="eye"><i></i></span></button>
+  <div class="coach-panel" id="coachPanel" role="dialog" aria-label="Study coach" hidden></div>
 </header>
 <main id="app"></main>
-<script src="app.js?v=13"></script>
+<script src="app.js?v=14"></script>
+<script src="coach.js?v=1"></script>
 </body>
 </html>

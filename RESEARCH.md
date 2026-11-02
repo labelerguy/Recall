@@ -91,6 +91,26 @@ Both are verified. Showing the gap is Recall's design choice based on those find
 - **Design:** students either tried to answer questions before reading a passage, or got extra study time instead.
 - **Result:** pretested items scored higher on the final test even though students got almost all pretest questions wrong: **75% vs 56%** (Experiment 1), and **55% vs 45%** after one week (Experiment 4). Items answered *wrong* on the pretest were still remembered better than with extra study.
 
+## The coach (black dot, top right)
+The coach adds **no new study rules**. It watches what you do and speaks up when it drifts from a rule already on this page. Every tip names its source.
+
+| It notices | It says | Rule |
+|---|---|---|
+| Your last sessions in a topic were one deck at a time while other decks have cards due | Mix the decks | #4 Kornell & Bjork 2008 |
+| One deck is well under way and another hasn't been started, exam within 3 weeks | Bring the cold deck in now | #4, #3 |
+| Exam is today | One Cram pass, answer before you look | #5 |
+| Exam is tomorrow and cards are due | This is your last spaced session | #3 Cepeda et al. 2008 |
+| The exam date has passed | Set the next date so spacing keeps working | #3 |
+| Your last test came in 15+ points under your prediction | Trust the test, learn the misses | #1, #6, #7 |
+| Exam within 4 days, half the cards learned, no test yet | Take a blank-page test | #1, #6 |
+| You opened Flip cards | Restudy loses at 2 days and 1 week | #5 Roediger & Karpicke 2006 |
+| You started Cram 3+ days before the exam | Cram skips the schedule; use Learn | #3, #5 |
+| Three new cards revealed with no guess in one session | Guess first | #9 Richland et al. 2009 |
+| Five "Make it stick" prompts skipped in one session | Try one line | #8 |
+| Nothing is due | Leave it; the gap is the point | #3 |
+
+The thresholds (2 sessions, 15 points, 3 skips, and so on) are Recall's own trigger points for when to speak up. They aren't from the studies and don't change how anything is scheduled.
+
 ## What was removed for lacking a primary source
 - **The "Easy" button and fixed review intervals (1, 3, 7, 14, 30, 60 days).** Those are common in flashcard apps, but the specific numbers had no study behind them. They were replaced by #2 and #3.
 - **"Time each review just before you would forget."** It's a popular rule on social media, but the primary studies checked here support spacing by time-to-exam (#3), not predicting a forgetting point per card.

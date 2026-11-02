@@ -12,6 +12,20 @@ const store = {
   set(k, v) { try { localStorage.setItem('recall:' + k, JSON.stringify(v)); } catch {} },
 };
 
+// Coach hooks (coach.js) and screen helpers.
+function ev(type, extra) { const e = store.get('coach:ev', []); e.push({ at: Date.now(), type, ...extra }); store.set('coach:ev', e.slice(-300)); }
+function coachSee(c) { window.__coachCtx = c; if (window.Coach) Coach.see(c); }
+const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+function setView(v) { app.dataset.view = v; document.onkeydown = null; window.scrollTo(0, 0); }
+// numbers count up when a screen appears
+function countUp(el) {
+  const to = +el.dataset.count, suf = el.dataset.suffix || '';
+  if (!to || reduceMotion()) { el.textContent = to + suf; return; }
+  const t0 = performance.now(), dur = 700;
+  const step = t => { const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3); el.textContent = Math.round(to * e) + suf; if (k < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+
 let decks = [];  // every deck: {id, title, cards, source, topic}
 let topics = []; // {id, title, kind, exam, decks:[deck]}
 
@@ -161,9 +175,11 @@ async function hydrate(fig) {
 }
 new MutationObserver(() => {
   document.querySelectorAll('figure.art:not([data-done])').forEach(f => { f.dataset.done = '1'; hydrate(f); });
+  document.querySelectorAll('[data-count]:not([data-counted])').forEach(el => { el.dataset.counted = '1'; countUp(el); });
 }).observe(document.getElementById('app'), { childList: true, subtree: true });
 
 // ---------- dashboard ----------
+const isoToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const daysTo = ms => Math.ceil((ms - Date.now()) / DAY);
 function topicStats(t) {
   const total = t.decks.reduce((n, d) => n + d.cards.length, 0);
@@ -173,10 +189,11 @@ function topicStats(t) {
   return { total, learned, due, exMs };
 }
 function home() {
-  crumb('');
+  crumb(''); setView('home');
   const stats = topics.map(t => ({ t, ...topicStats(t) }));
   const upcoming = stats.filter(x => x.exMs && x.exMs > Date.now()).sort((a, b) => a.exMs - b.exMs);
-  const rows = stats.slice().sort((a, b) => (a.exMs && a.exMs > Date.now() ? a.exMs : 9e15) - (b.exMs && b.exMs > Date.now() ? b.exMs : 9e15));
+  const rank = x => examStr(x.t) === isoToday() ? 0 : x.exMs && x.exMs > Date.now() ? x.exMs : 9e15;
+  const rows = stats.slice().sort((a, b) => rank(a) - rank(b));
   const dueAll = stats.reduce((n, x) => n + x.due, 0);
   const learnedAll = stats.reduce((n, x) => n + x.learned, 0), totalAll = stats.reduce((n, x) => n + x.total, 0);
   let last = null;
@@ -188,20 +205,20 @@ function home() {
       <div class="col">
         ${rows.map((x, n) => `
           <div class="topic" data-n="${topics.indexOf(x.t)}" tabindex="0" role="button">
-            <div class="topic-top"><span class="pill">${esc(x.t.kind)}</span>${x.exMs && x.exMs > Date.now() ? `<span class="mono muted">${daysTo(x.exMs)} days to exam</span>` : ''}</div>
+            <div class="topic-top"><span class="pill">${esc(x.t.kind)}</span>${examStr(x.t) === isoToday() ? '<span class="mono">Exam today</span>' : x.exMs && x.exMs > Date.now() ? `<span class="mono muted">${daysTo(x.exMs)} days to exam</span>` : ''}</div>
             <h2>${esc(x.t.title)}</h2>
             <div class="bar" aria-label="${x.learned} of ${x.total} learned"><i style="width:${x.total ? (x.learned / x.total) * 100 : 0}%"></i></div>
-            <div class="topic-foot mono"><span>${x.learned}/${x.total} learned</span><span>${x.due} due today</span></div>
+            <div class="topic-foot mono"><span><span data-count="${x.learned}">${x.learned}</span>/${x.total} learned</span><span><span data-count="${x.due}">${x.due}</span> due today</span></div>
           </div>`).join('') || '<div class="empty"><h2>Nothing here yet</h2><p class="muted">Tell Claude "I want to learn ___" and it builds the topic, or import a Quizlet set.</p></div>'}
         <div class="row"><button class="btn" id="imp">Import a set</button><button class="btn ghost" id="exp">Back up progress</button></div>
       </div>
       <aside class="glance">
         <p class="eyebrow">At a glance</p>
-        <div class="stat-row"><span>Due today</span><b class="mono ${dueAll ? 'gold' : ''}">${dueAll}</b></div>
+        <div class="stat-row"><span>Due today</span><b class="mono ${dueAll ? 'gold' : ''}" data-count="${dueAll}">${dueAll}</b></div>
         <div class="stat-row"><span>Next exam</span><b class="mono">${nx ? `${daysTo(nx.exMs)}d` : '—'}</b></div>
         ${nx ? `<p class="small muted">${esc(nx.t.title)}</p>` : ''}
         <div class="stat-row"><span>This week</span><b class="mono">${(() => { const w = store.get('log', []).filter(x => x.at > Date.now() - 7 * DAY); return `${w.length} · ${w.reduce((n, x) => n + x.mins, 0)}m`; })()}</b></div>
-        <div class="stat-row"><span>Cards learned</span><b class="mono">${learnedAll}/${totalAll}</b></div>
+        <div class="stat-row"><span>Cards learned</span><b class="mono"><span data-count="${learnedAll}">${learnedAll}</span>/${totalAll}</b></div>
         <div class="stat-row"><span>Last test</span><b class="mono">${last ? `${last.actual}%` : '—'}</b></div>
         ${last ? `<p class="small muted">You predicted ${last.predicted}%. Gap ${last.actual - last.predicted > 0 ? '+' : ''}${last.actual - last.predicted}.</p>` : '<p class="small muted">Run a blank-page test to see how your guess compares to your score.</p>'}
         <a class="small muted" href="RESEARCH.md" target="_blank" rel="noopener">Why Recall works this way</a>
@@ -213,10 +230,11 @@ function home() {
   });
   $('#imp').onclick = importView;
   $('#exp').onclick = exportProgress;
+  coachSee({ view: 'home' });
 }
 
 function topicView(t) {
-  crumb(t.title);
+  crumb(t.title); setView('topic');
   const st = topicStats(t);
   app.innerHTML = `
     <p class="eyebrow"><button class="link" id="up">All topics</button> / ${esc(t.kind)}</p>
@@ -239,11 +257,12 @@ function topicView(t) {
     const go = () => deckView(t.decks[+el.dataset.n]);
     el.onclick = go; el.onkeydown = e => { if (e.key === 'Enter') go(); };
   });
+  coachSee({ view: 'topic', topic: t });
 }
 
 // ---------- deck page ----------
 function deckView(deck) {
-  crumb(deck.title);
+  crumb(deck.title); setView('deck');
   const tests = store.get('tests:' + deck.id, []);
   const hist = tests.slice(-8).reverse().map(t =>
     `<tr><td>${new Date(t.at).toLocaleDateString()}</td><td>${t.predicted}%</td><td>${t.actual}%</td><td>${t.actual - t.predicted > 0 ? '+' : ''}${t.actual - t.predicted}</td></tr>`).join('');
@@ -278,6 +297,7 @@ function deckView(deck) {
       boot();
     };
   }
+  coachSee({ view: 'deck', deck, topic: deck.topic });
 }
 
 // ---------- learn / cram ----------
@@ -294,6 +314,11 @@ function learn(refs, flip, cram, title, back, key) {
   const saved = store.get(sk, null);
   let items, need = new Map(), got = new Map(), queue, progress = 0, misses = 0, active = 0, started = Date.now();
   const byId = (d, i) => refs.find(r => r.deck.id === d && r.i === i);
+  const deckIds = [...new Set(refs.map(r => r.deck.id))];
+  const topic = refs[0] && refs[0].deck.topic;
+  const soloDeck = deckIds.length === 1 ? refs[0].deck : null;
+  const ctx = { view: 'learn', key, cram: !!cram, topic, deck: soloDeck };
+  setView('learn');
   if (saved && saved.items) {
     // resume exactly where you left off
     items = saved.items.map(([d, i]) => byId(d, i)).filter(Boolean);
@@ -303,73 +328,144 @@ function learn(refs, flip, cram, title, back, key) {
   } else {
     const now = Date.now();
     items = refs.filter(r => { if (cram) return true; const c = srs(r.deck)[r.i]; return !c || !c.due || c.due <= now; });
-    if (!items.length) { app.innerHTML = `<h1>Nothing due</h1><p class="muted">Every card is scheduled for later. Recall it then, not now: the gap is what makes it stick.</p><button class="btn" id="back">Back</button>`; $('#back').onclick = back; return; }
+    if (!items.length) {
+      app.innerHTML = `<h1>Nothing due</h1><p class="muted">Every card is scheduled for later. Recall it then, not now: the gap is what makes it stick.</p><button class="btn" id="back">Back</button>`;
+      $('#back').onclick = back; coachSee({ ...ctx, view: 'nothing' }); return;
+    }
     items.forEach(r => { need.set(r, cram ? 1 : criterion(r.deck, r.i)); got.set(r, 0); });
     queue = shuffle(items);
+    ev('study', { topic: topic && topic.id, deck: soloDeck ? soloDeck.id : null, mixed: deckIds.length > 1, cram: !!cram });
   }
   const totalNeed = items.reduce((t, r) => t + need.get(r), 0);
-  let lastAct = Date.now();
+  let lastAct = Date.now(), lastPct = (progress / totalNeed) * 100, noGuess = 0, noElab = 0;
   const tick = () => { const n = Date.now(); active += Math.min(n - lastAct, 5 * 60000); lastAct = n; };
   const save = () => store.set(sk, {
     items: items.map(r => [r.deck.id, r.i]), need: items.map(r => need.get(r)), got: items.map(r => got.get(r)),
     queue: queue.map(r => items.indexOf(r)), progress, misses, active, started, flip, title, at: Date.now() });
   const missedNow = new Set();
   const later = (r, gap) => queue.splice(Math.min(gap, queue.length), 0, r);
+  // card leaves to the right (got it) or left (missed), then the next one deals in
+  const leave = (dir, then) => {
+    const c = app.querySelector('.card');
+    if (!c || reduceMotion()) return then();
+    c.style.transition = ''; c.style.transform = '';
+    c.classList.add(dir > 0 ? 'out-good' : 'out-miss');
+    setTimeout(then, 260);
+  };
   const next = () => {
     if (!queue.length) {
       try { localStorage.removeItem('recall:' + sk); } catch {}
       const mins = Math.max(1, Math.round(active / 60000));
-      logSession({ at: Date.now(), title, cards: items.length, misses, mins, cram: !!cram });
-      app.innerHTML = `<h1>Session done</h1><p class="stat mono">${items.length} cards to criterion · ${misses} misses · ${mins} min</p>
+      logSession({ at: Date.now(), title, cards: items.length, misses, mins, cram: !!cram, key, topic: topic && topic.id });
+      const nextDueAt = cram ? null : Math.min(...items.map(r => (srs(r.deck)[r.i] || {}).due || Infinity));
+      setView('done');
+      app.innerHTML = `<div class="done-mark" aria-hidden="true"><i></i></div>
+        <h1>Session done</h1><p class="stat mono"><span data-count="${items.length}">${items.length}</span> cards to criterion · ${misses} misses · ${mins} min</p>
         <p class="small muted">${cram ? 'Cram does not change the schedule.' : 'Each card is now scheduled for its next relearning session.'} Saved to your history.</p>
         <button class="btn primary" id="back">Back</button>`;
-      $('#back').onclick = back; return;
+      $('#back').onclick = back;
+      coachSee({ ...ctx, view: 'done', at: Date.now(), next: isFinite(nextDueAt) ? nextDueAt : null });
+      return;
     }
     save();
     const r = queue[0]; const { deck, i } = r; const { q, a, img, aImg } = sides(deck, i, flip);
     const prior = srs(deck)[i]; const isNew = !prior || !prior.sessions;
     const firstTry = isNew && got.get(r) === 0 && !missedNow.has(r);
+    const pct = (progress / totalNeed) * 100;
     crumb(`${title} · ${cram ? 'Cram' : 'Learn'} · ${got.get(r)}/${need.get(r)} correct`);
     app.innerHTML = `
-      <div class="progress"><i style="width:${(progress / totalNeed) * 100}%"></i></div>
-      <div class="card">${img}<div class="face">${esc(q)}</div>
+      <div class="progress"><i style="width:${lastPct}%"></i></div>
+      <div class="card deal">${img}<div class="face">${esc(q)}</div>
         ${firstTry ? '<p class="small muted">New card: guess before you look, even if you have no idea. A wrong guess still helps you learn it.</p>' : ''}
         <textarea id="ans" placeholder="${firstTry ? 'Your best guess' : 'Answer from memory first. Type it or say it out loud.'}"></textarea>
-        <button class="btn primary" id="show">Reveal</button></div>
+        <div class="row tight"><button class="btn primary" id="show">Reveal <span class="kbd">enter</span></button>${pips(got.get(r), need.get(r))}</div></div>
       <div class="row"><button class="btn ghost" id="pause">Save and exit</button><span class="small muted" style="align-self:center">Progress saves after every card.</span></div>`;
+    requestAnimationFrame(() => requestAnimationFrame(() => { const bar = app.querySelector('.progress i'); if (bar) bar.style.width = pct + '%'; }));
+    lastPct = pct;
+    coachSee(ctx);
     $('#pause').onclick = () => { tick(); save(); back(); };
-    const ans = $('#ans'); ans.focus();
+    const ans = $('#ans'); ans.focus({ preventScroll: true });
+    ans.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#show').click(); } };
     $('#show').onclick = () => {
       const typed = ans.value.trim(); const j = judgeHTML(a);
-      app.querySelector('.card').innerHTML = `${img}<div class="face">${esc(q)}</div>
+      if (firstTry && !typed && ++noGuess === 3) Coach.push({
+        key: `guess:${key}:${started}`, prio: 88,
+        title: 'Guess first, even blind',
+        body: 'You\'ve revealed three new cards without a guess. Type anything. Students who guessed and got it wrong still scored 75% vs 56% for extra study time.',
+        src: Coach.SRC.guess });
+      const askElab = isNew && got.get(r) === 0 || missedNow.has(r);
+      const card = app.querySelector('.card');
+      card.classList.remove('deal'); card.classList.add('revealed');
+      card.innerHTML = `${img}<div class="face">${esc(q)}</div>
         ${typed ? `<div class="yours">You said: ${esc(typed)}</div>` : ''}${aImg}${j.html}
-        ${elabHTML(deck, i, isNew && got.get(r) === 0 || missedNow.has(r))}
-        <div class="row"><button class="btn again" id="no">Missed</button><button class="btn good" id="yes">Got it all</button></div>`;
+        ${elabHTML(deck, i, askElab)}
+        <div class="row"><button class="btn again" id="no">Missed <span class="kbd">←</span></button><button class="btn good" id="yes">Got it all <span class="kbd">→</span></button></div>
+        ${j.multi ? '<p class="small muted keys">Press 1–9 to check parts.</p>' : ''}`;
       wireElab(deck, i);
       const yes = $('#yes');
+      const boxes = [...app.querySelectorAll('[data-part]')];
       if (j.multi) {
-        const boxes = [...app.querySelectorAll('[data-part]')];
-        const sync = () => { yes.disabled = !boxes.every(b => b.checked); };
+        const sync = () => {
+          const was = yes.disabled; yes.disabled = !boxes.every(b => b.checked);
+          if (was && !yes.disabled && !reduceMotion()) { yes.classList.remove('pop'); void yes.offsetWidth; yes.classList.add('pop'); }
+        };
         boxes.forEach(b => b.onchange = sync); sync();
       }
-      $('#no').onclick = () => { tick(); queue.shift(); misses++; missedNow.add(r); if (!cram) markMissed(deck, i); later(r, 3); next(); };
-      yes.onclick = () => {
-        tick(); queue.shift();
+      const checkElab = () => { if (askElab && !(document.getElementById('elab') || {}).value && ++noElab === 5) Coach.push({
+        key: `elab:${key}:${started}`, prio: 45,
+        title: 'Try one "Make it stick" line',
+        body: 'Five skipped in a row. One line on why it\'s true, or what it connects to in your life, beat careful reading in the studies. It shows up again next time you see the card.',
+        src: Coach.SRC.elab }); };
+      const miss = () => { document.onkeydown = null; checkElab(); tick(); queue.shift(); misses++; missedNow.add(r); if (!cram) markMissed(deck, i); later(r, 3); leave(-1, next); };
+      const hit = () => {
+        if (yes.disabled) { nudge(yes); return; }
+        document.onkeydown = null; checkElab(); tick(); queue.shift();
         got.set(r, got.get(r) + 1); progress++;
         if (got.get(r) >= need.get(r)) { if (!cram) finishCard(deck, i); }
         else later(r, 5);
-        next();
+        leave(1, next);
       };
+      $('#no').onclick = miss; yes.onclick = hit;
+      document.onkeydown = e => {
+        if (e.target.closest && e.target.closest('textarea,input[type=text]')) return;
+        if (e.key === 'ArrowRight') { e.preventDefault(); hit(); }
+        else if (e.key === 'ArrowLeft') { e.preventDefault(); miss(); }
+        else if (/^[1-9]$/.test(e.key) && boxes[+e.key - 1]) { const b = boxes[+e.key - 1]; b.checked = !b.checked; b.dispatchEvent(new Event('change')); }
+      };
+      swipe(card, hit, miss, () => !yes.disabled);
+      yes.focus({ preventScroll: true });
     };
   };
   next();
+}
+// dots showing correct recalls toward this card's criterion
+function pips(n, need) { return need > 1 ? `<span class="pips" aria-label="${n} of ${need} correct">${Array.from({ length: need }, (_, k) => `<i class="${k < n ? 'on' : ''}"></i>`).join('')}</span>` : ''; }
+function nudge(el) { if (reduceMotion()) return; el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); }
+// touch: drag the revealed card right for Got it, left for Missed
+function swipe(card, right, left, canRight) {
+  let x0 = null, dx = 0;
+  card.onpointerdown = e => {
+    if (e.pointerType === 'mouse' || e.target.closest('textarea,input,label,button,a')) return;
+    x0 = e.clientX; dx = 0; card.style.transition = 'none';
+  };
+  card.onpointermove = e => {
+    if (x0 === null) return; dx = e.clientX - x0;
+    if (dx > 0 && !canRight()) dx = dx * 0.25;
+    card.style.transform = `translateX(${dx}px) rotate(${dx / 40}deg)`;
+    card.dataset.lean = dx > 40 ? 'good' : dx < -40 ? 'miss' : '';
+  };
+  const end = () => {
+    if (x0 === null) return; x0 = null; card.style.transition = ''; card.dataset.lean = '';
+    if (dx > 90 && canRight()) right(); else if (dx < -90) left(); else card.style.transform = '';
+  };
+  card.onpointerup = end; card.onpointercancel = end;
 }
 
 // ---------- blank-page test ----------
 // Predict first, then answer every card cold. Students' predictions don't track how much they've learned
 // (Karpicke & Roediger 2008; Kornell & Bjork 2008), so the gap is shown and kept.
 function testView(deck, flip) {
-  crumb(deck.title + ' · Test');
+  crumb(deck.title + ' · Test'); setView('test'); coachSee({ view: 'test', deck, topic: deck.topic });
   app.innerHTML = `
     <h1>Blank-page test</h1>
     <p>Before you start: what percent of these ${deck.cards.length} cards will you get fully right? Your guess goes next to your real score.</p>
@@ -384,13 +480,16 @@ function testView(deck, flip) {
         const actual = Math.round((right / order.length) * 100);
         const tests = store.get('tests:' + deck.id, []); tests.push({ at: Date.now(), predicted, actual }); store.set('tests:' + deck.id, tests);
         wrong.forEach(i => markMissed(deck, i));
+        ev('test', { topic: deck.topic && deck.topic.id, deck: deck.id, predicted, actual });
         app.innerHTML = `
-          <h1>${actual}%</h1>
+          <h1 class="big mono"><span data-count="${actual}" data-suffix="%">${actual}%</span></h1>
           <p class="stat">Predicted ${predicted}% · actual ${actual}% · gap ${actual - predicted > 0 ? '+' : ''}${actual - predicted}</p>
           <p>${actual < 80 ? 'Under 80%: not ready yet. The cards you missed are due now in Learn.' : 'Over 80%. Keep your relearning sessions until the exam.'}</p>
           <div class="row"><button class="btn primary" id="miss">Learn the ${wrong.length} missed</button><button class="btn" id="back">Back</button></div>`;
         $('#back').onclick = () => deckView(deck);
         $('#miss').onclick = () => { try { localStorage.removeItem('recall:' + sessionKey(deck.id, false)); } catch {} learn(refsOf(deck), flip, false, deck.title, () => deckView(deck), deck.id); };
+        if (!wrong.length) $('#miss').remove();
+        coachSee({ view: 'testdone', deck, topic: deck.topic });
         return;
       }
       const i = order[k]; const { q, a, img, aImg } = sides(deck, i, flip);
@@ -417,12 +516,14 @@ function testView(deck, flip) {
 
 // ---------- flip cards ----------
 function flipCards(deck, flip) {
+  setView('flip'); ev('flip', { topic: deck.topic && deck.topic.id, deck: deck.id });
+  coachSee({ view: 'flip', deck, topic: deck.topic });
   const order = deck.cards.map((_, i) => i); let k = 0, shown = false;
   const draw = () => {
     const { q, a, img, aImg } = sides(deck, order[k], flip);
     crumb(`${deck.title} · ${k + 1}/${order.length}`);
     app.innerHTML = `
-      <div class="card" id="c" tabindex="0">
+      <div class="card${shown ? ' flipped' : ''}" id="c" tabindex="0">
         ${img}
         <div class="face">${esc(q)}</div>
         ${shown ? `<div class="back">${aImg}${esc(a)}</div>` : ''}
@@ -440,7 +541,7 @@ function flipCards(deck, flip) {
 
 // ---------- import ----------
 function importView() {
-  crumb('Import');
+  crumb('Import'); setView('import'); coachSee({ view: 'import' });
   app.innerHTML = `
     <h1>Import a deck</h1>
     <p class="small">In Quizlet: open the set, click <b>⋯</b> then <b>Export</b>, keep "Tab" between term and definition and "New line" between cards, then copy. Paste below.</p>
