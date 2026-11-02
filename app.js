@@ -375,10 +375,10 @@ function learn(refs, flip, cram, title, back, key) {
     crumb(`${title} · ${cram ? 'Cram' : 'Learn'} · ${got.get(r)}/${need.get(r)} correct`);
     app.innerHTML = `
       <div class="progress"><i style="width:${lastPct}%"></i></div>
-      <div class="card deal">${img}<div class="face">${esc(q)}</div>
+      <div class="card deal">${img}<div class="cbody"><div class="face">${esc(q)}</div>
         ${firstTry ? '<p class="small muted">New card: guess before you look, even if you have no idea. A wrong guess still helps you learn it.</p>' : ''}
         <textarea id="ans" placeholder="${firstTry ? 'Your best guess' : 'Answer from memory first. Type it or say it out loud.'}"></textarea>
-        <div class="row tight"><button class="btn primary" id="show">Reveal <span class="kbd">enter</span></button>${pips(got.get(r), need.get(r))}</div></div>
+        <div class="act"><div class="row tight"><button class="btn primary" id="show">Reveal <span class="kbd">enter</span></button>${pips(got.get(r), need.get(r))}</div></div></div></div>
       <div class="row"><button class="btn ghost" id="pause">Save and exit</button><span class="small muted" style="align-self:center">Progress saves after every card.</span></div>`;
     requestAnimationFrame(() => requestAnimationFrame(() => { const bar = app.querySelector('.progress i'); if (bar) bar.style.width = pct + '%'; }));
     lastPct = pct;
@@ -396,11 +396,10 @@ function learn(refs, flip, cram, title, back, key) {
       const askElab = isNew && got.get(r) === 0 || missedNow.has(r);
       const card = app.querySelector('.card');
       card.classList.remove('deal'); card.classList.add('revealed');
-      card.innerHTML = `${img}<div class="face">${esc(q)}</div>
+      card.innerHTML = `${img}<div class="cbody"><div class="face">${esc(q)}</div>
         ${typed ? `<div class="yours">You said: ${esc(typed)}</div>` : ''}${aImg}${j.html}
         ${elabHTML(deck, i, askElab)}
-        <div class="row"><button class="btn again" id="no">Missed <span class="kbd">←</span></button><button class="btn good" id="yes">Got it all <span class="kbd">→</span></button></div>
-        ${j.multi ? '<p class="small muted keys">Press 1–9 to check parts.</p>' : ''}`;
+        <div class="act"><div class="row"><button class="btn again" id="no">Missed <span class="kbd">←</span></button><button class="btn good" id="yes">Got it all <span class="kbd">→</span></button>${j.multi ? '<span class="small muted keys">Press 1–9 to check parts.</span>' : ''}</div></div></div>`;
       wireElab(deck, i);
       const yes = $('#yes');
       const boxes = [...app.querySelectorAll('[data-part]')];
@@ -495,15 +494,15 @@ function testView(deck, flip) {
       const i = order[k]; const { q, a, img, aImg } = sides(deck, i, flip);
       app.innerHTML = `
         <div class="progress"><i style="width:${(k / order.length) * 100}%"></i></div>
-        <div class="card">${img}<div class="face">${esc(q)}</div>
+        <div class="card">${img}<div class="cbody"><div class="face">${esc(q)}</div>
           <textarea id="ans" placeholder="Write the full answer from memory"></textarea>
-          <button class="btn primary" id="show">Check</button></div>`;
+          <div class="act"><div class="row"><button class="btn primary" id="show">Check</button></div></div></div></div>`;
       $('#ans').focus();
       $('#show').onclick = () => {
         const typed = $('#ans').value.trim(); const j = judgeHTML(a);
-        app.querySelector('.card').innerHTML = `${img}<div class="face">${esc(q)}</div>
+        app.querySelector('.card').innerHTML = `${img}<div class="cbody"><div class="face">${esc(q)}</div>
           <div class="yours">You wrote: ${esc(typed || '(nothing)')}</div>${aImg}${j.html}
-          <div class="row"><button class="btn again" id="no">Wrong</button><button class="btn good" id="yes">Right</button></div>`;
+          <div class="act"><div class="row"><button class="btn again" id="no">Wrong</button><button class="btn good" id="yes">Right</button></div></div></div>`;
         const yes = $('#yes');
         if (j.multi) { const boxes = [...app.querySelectorAll('[data-part]')]; const sync = () => { yes.disabled = !boxes.every(b => b.checked); yes.style.opacity = yes.disabled ? .4 : 1; }; boxes.forEach(b => b.onchange = sync); sync(); }
         yes.onclick = () => { right++; k++; step(); };
@@ -525,8 +524,8 @@ function flipCards(deck, flip) {
     app.innerHTML = `
       <div class="card${shown ? ' flipped' : ''}" id="c" tabindex="0">
         ${img}
-        <div class="face">${esc(q)}</div>
-        ${shown ? `<div class="back">${aImg}${esc(a)}</div>` : ''}
+        <div class="cbody"><div class="face">${esc(q)}</div>
+        ${shown ? `<div class="back">${aImg}${esc(a)}</div>` : ''}</div>
       </div>
       <div class="row"><button class="btn" id="p">Prev</button><button class="btn primary" id="f">Flip <span class="kbd">space</span></button><button class="btn" id="n">Next</button><button class="btn" id="back">Done</button></div>
       <p class="small muted">Flipping is closer to rereading than to recall. In Roediger & Karpicke (2006), restudying won at 5 minutes and lost at 2 days and 1 week. Use Learn or Test before an exam.</p>`;
